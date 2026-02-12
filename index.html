@@ -1,0 +1,110 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>QP280 Change Management App</title>
+  <style>
+    body{font-family:Arial;margin:0;background:#f4f6fb}header{background:#172554;color:#fff;padding:10px 16px;display:flex;justify-content:space-between;align-items:center}
+    main{padding:14px}button{background:#1d4ed8;color:#fff;border:none;padding:6px 10px;border-radius:5px;cursor:pointer}input,select,textarea{padding:6px;border:1px solid #ccc;border-radius:4px}
+    table{width:100%;border-collapse:collapse;background:#fff}th,td{border:1px solid #ddd;padding:6px;font-size:12px;vertical-align:top}.card{background:#fff;border:1px solid #ddd;border-radius:8px;padding:10px}
+    .hidden{display:none}.grid{display:grid;grid-template-columns:repeat(4,minmax(180px,1fr));gap:8px}.kpi{background:#fff;padding:10px;border-radius:8px;border:1px solid #ddd}.row{display:flex;gap:10px;align-items:center;justify-content:space-between}.flash{padding:8px;border-radius:6px;background:#dcfce7;margin-bottom:8px}
+  </style>
+</head>
+<body>
+<header>
+  <h3>QP280 Change Management</h3>
+  <div id="userbar"></div>
+</header>
+<main>
+  <div id="flash" class="flash hidden"></div>
+
+  <section id="loginView" class="card" style="max-width:430px">
+    <h3>Login</h3>
+    <div class="grid" style="grid-template-columns:1fr">
+      <label>Username <input id="username"></label>
+      <label>Password <input id="password" type="password"></label>
+      <button onclick="login()">Sign in</button>
+      <small>Users: admin/admin, creator1/creator1, modifier1/modifier1, coord1/coord1, approver1/approver1</small>
+    </div>
+  </section>
+
+  <section id="appView" class="hidden">
+    <div class="row">
+      <div>
+        <button onclick="showPage('records')">Records</button>
+        <button onclick="showPage('dashboard')">Dashboard</button>
+      </div>
+      <button id="newBtn" onclick="openForm()">+ New CR</button>
+    </div>
+
+    <section id="dashboard" class="hidden" style="margin-top:10px">
+      <h3>Dashboard & KPIs</h3>
+      <div class="grid" id="kpis" style="grid-template-columns:repeat(6,minmax(120px,1fr))"></div>
+      <div class="row" style="align-items:flex-start;margin-top:8px">
+        <div class="card" id="priorityMix" style="flex:1"></div>
+        <div class="card" id="fastTrackMix" style="flex:1"></div>
+      </div>
+    </section>
+
+    <section id="records" style="margin-top:10px">
+      <h3>Change Records</h3>
+      <table>
+        <thead><tr><th>CR No</th><th>Product</th><th>Type</th><th>Priority</th><th>Status</th><th>Due Date</th><th>Progress</th><th>Creator</th><th>Modifier</th><th>Actions</th></tr></thead>
+        <tbody id="recordRows"></tbody>
+      </table>
+    </section>
+
+    <section id="form" class="hidden card" style="margin-top:10px">
+      <h3 id="formTitle"></h3>
+      <div class="grid" id="fields"></div>
+      <div style="margin-top:8px"><button onclick="saveRecord()">Save</button> <button onclick="cancelForm()">Cancel</button></div>
+    </section>
+
+    <section id="approvals" class="hidden card" style="margin-top:10px">
+      <h3 id="approvalTitle"></h3>
+      <table><thead><tr><th>Step</th><th>Status</th><th>Approver</th><th>Due</th><th>Escalation</th><th>Action</th></tr></thead><tbody id="approvalRows"></tbody></table>
+      <button onclick="closeApprovals()" style="margin-top:8px">Close</button>
+    </section>
+  </section>
+</main>
+<script>
+const roles={creator:['create','view'],modifier:['create','view','update'],coordinator:['create','view','update','approve'],approver:['view','approve'],admin:['create','view','update','approve','archive']};
+const users=[{u:'creator1',p:'creator1',n:'Creator User',r:'creator'},{u:'modifier1',p:'modifier1',n:'Modifier User',r:'modifier'},{u:'coord1',p:'coord1',n:'Coordinator User',r:'coordinator'},{u:'approver1',p:'approver1',n:'Approver User',r:'approver'},{u:'admin',p:'admin',n:'System Admin',r:'admin'}];
+const steps=['Production Engineer','Head of Engineering & NPD','Director of Innovation, Technology & Regulatory Affairs','Head of Operations','Quality Manager'];
+const fields=['product','product_type','reason_change_drawings','reason_change_wi','date_raised','my_opened','initiated_by','department','source_of_request','change_description','priority','due_date','change_coordinator','cad_engineer','status','implementation_date','my_implemented','progress','on_production_board','paperwork_with','resp','fast_track_class','procedure_change','drawing_change','comment'];
+const labels={product:'Product',product_type:'Product Type',reason_change_drawings:'Reason for Change Drawings / Other',reason_change_wi:'Reason for Change WI',date_raised:'Date Raised',my_opened:'M/Y Opened',initiated_by:'Initiated By',department:'Department',source_of_request:'Source of Request',change_description:'Change Description',priority:'Priority',due_date:'Due Date',change_coordinator:'Change Coordinator',cad_engineer:'CAD Engineer',status:'Status',implementation_date:'Implementation Date',my_implemented:'M/Y Implemented',progress:'Progress',on_production_board:'On production board',paperwork_with:'paperwork with',resp:'Resp',fast_track_class:'Fast Track Minor Major',procedure_change:'Procedure Change',drawing_change:'Drawing Change',comment:'Comment'};
+let currentUser=null,editingNo=null,approvalsFor=null;
+const seed=[{cr_no:708,product:'OMV',product_type:'Vaporiser',date_raised:'2005-03-16',my_opened:'Mar-05',initiated_by:'Iain Revell',department:'Prod Eng.',source_of_request:'Production',change_description:'As Above',priority:'Low',due_date:'',change_coordinator:'N/A',cad_engineer:'N/A',status:'Cancelled',implementation_date:'2012-06-25',my_implemented:'Jun-12',progress:'No longer required',on_production_board:'N/A',paperwork_with:'Filed',resp:'',fast_track_class:'',procedure_change:'',drawing_change:'',comment:''},
+{cr_no:717,product:'Sigma Alpha',product_type:'Vaporiser',date_raised:'2005-03-24',my_opened:'Mar-05',initiated_by:'Iain Revell',department:'Prod Eng.',source_of_request:'Production',change_description:'As Above',priority:'Low',status:'Cancelled',implementation_date:'2012-05-23',my_implemented:'May-12',progress:'No longer required',on_production_board:'N/A',paperwork_with:'Filed'},
+{cr_no:718,product:'Rail System & Accessories',product_type:'SOT',date_raised:'2005-03-24',my_opened:'Mar-05',initiated_by:'Iain Revell',department:'Prod Eng.',source_of_request:'Production',change_description:'As Above',priority:'Low',status:'Cancelled',implementation_date:'2012-05-23',my_implemented:'May-12',progress:'No longer required',on_production_board:'N/A',paperwork_with:'Filed'},
+{cr_no:724,product:'Rail System & Accessories',product_type:'SOT',date_raised:'2005-03-30',my_opened:'Mar-05',initiated_by:'Iain Revell',department:'Prod Eng.',source_of_request:'Production',change_description:'As Above',priority:'Low',status:'Cancelled',implementation_date:'2012-06-25',my_implemented:'Jun-12',progress:'Duplication of CR 718',on_production_board:'N/A',paperwork_with:'Filed'},
+{cr_no:727,product:'AV800',product_type:'Ventilators',date_raised:'2005-03-31',my_opened:'Mar-05',initiated_by:'Derek Worth',department:'Prod Eng.',source_of_request:'Production',change_description:'increase quantity of part 025607 from 3 to 10 on assemblies 300020,300211',priority:'Low',due_date:'60',change_coordinator:'John Evins',cad_engineer:'John Evins',status:'Closed',implementation_date:'2013-04-18',my_implemented:'Apr-13',progress:'Filed',on_production_board:'N/A',paperwork_with:'Filed',resp:'CH'},
+{cr_no:752,product:'Manley',product_type:'Ventilators',date_raised:'2005-04-20',my_opened:'Apr-05',initiated_by:'Bob Poulter',department:'Purchasing',source_of_request:'Obsolescence',change_description:'as above',priority:'Low',change_coordinator:'Martyn White',cad_engineer:'Andrew Mills',status:'Closed',implementation_date:'2012-05-23',my_implemented:'May-12',progress:'Filed',on_production_board:'N/A',paperwork_with:'Filed'},
+{cr_no:840,product:'Absorber',product_type:'Absorber',date_raised:'2005-07-12',my_opened:'Jul-05',initiated_by:'Alan Green',department:'Prod Eng.',source_of_request:'Production',change_description:'replace canister assembly 39425 with canister assembly 800814 on all existing absorbers',priority:'Low',change_coordinator:'Martyn White',cad_engineer:'Andrew Mills',status:'Closed',implementation_date:'2012-09-04',my_implemented:'Sep-12',progress:'Filed',on_production_board:'N/A',paperwork_with:'Filed'}];
+
+function db(){return JSON.parse(localStorage.getItem('qp280-db')||'null')||{records:seed.map(s=>({...Object.fromEntries(fields.map(f=>[f,s[f]||'' ])),...s,archived:false,created_by:'seed',modified_by:'seed',created_at:new Date().toISOString(),modified_at:new Date().toISOString()})),approvals:[],next:841};}
+function saveDB(v){localStorage.setItem('qp280-db',JSON.stringify(v));}
+function perms(){return roles[currentUser.r]||[]}
+function can(p){return perms().includes(p)}
+function flash(msg){const f=document.getElementById('flash');f.textContent=msg;f.classList.remove('hidden');setTimeout(()=>f.classList.add('hidden'),2500)}
+function login(){const u=document.getElementById('username').value,p=document.getElementById('password').value;const found=users.find(x=>x.u===u&&x.p===p);if(!found)return alert('Invalid credentials');currentUser=found;document.getElementById('loginView').classList.add('hidden');document.getElementById('appView').classList.remove('hidden');document.getElementById('userbar').innerHTML=`${found.n} (${found.r}) <button onclick="logout()">Logout</button>`;document.getElementById('newBtn').style.display=can('create')?'inline-block':'none';render();}
+function logout(){currentUser=null;document.getElementById('loginView').classList.remove('hidden');document.getElementById('appView').classList.add('hidden');document.getElementById('userbar').innerHTML='';}
+function showPage(p){document.getElementById('records').classList.toggle('hidden',p!=='records');document.getElementById('dashboard').classList.toggle('hidden',p!=='dashboard');if(p==='dashboard')renderDashboard();}
+function render(){escalate();const d=db();const rows=d.records.filter(r=>!r.archived).sort((a,b)=>b.cr_no-a.cr_no).map(r=>`<tr><td>${r.cr_no}</td><td>${r.product||''}</td><td>${r.product_type||''}</td><td>${r.priority||''}</td><td>${r.status||''}</td><td>${r.due_date||''}</td><td>${r.progress||''}</td><td>${r.created_by||''}</td><td>${r.modified_by||''}</td><td>${can('update')?`<button onclick="openForm(${r.cr_no})">Edit</button>`:''} ${can('approve')?`<button onclick="openApprovals(${r.cr_no})">Approvals</button>`:''} ${can('archive')?`<button onclick="archiveRec(${r.cr_no})">Archive</button>`:''}</td></tr>`).join('');document.getElementById('recordRows').innerHTML=rows;renderDashboard();showPage('records');}
+function renderDashboard(){const d=db();const rec=d.records.filter(r=>!r.archived);const ap=d.approvals;const k=[['Total',rec.length],['Open',rec.filter(r=>['Open','Pending','In Review'].includes(r.status)).length],['Closed',rec.filter(r=>r.status==='Closed').length],['Cancelled',rec.filter(r=>r.status==='Cancelled').length],['Overdue Approvals',ap.filter(a=>a.status==='Pending'&&a.due_date&&a.due_date<today()).length],['Escalated',ap.filter(a=>a.status==='Pending'&&a.escalation_level>0).length]];document.getElementById('kpis').innerHTML=k.map(x=>`<div class='kpi'><div>${x[0]}</div><b>${x[1]}</b></div>`).join('');const pm={};rec.forEach(r=>pm[r.priority||'Unspecified']=(pm[r.priority||'Unspecified']||0)+1);document.getElementById('priorityMix').innerHTML='<h4>Priority Mix</h4>'+Object.entries(pm).map(([k,v])=>`<div>${k}: ${v}</div>`).join('');const fm={};rec.forEach(r=>fm[r.fast_track_class||'Unspecified']=(fm[r.fast_track_class||'Unspecified']||0)+1);document.getElementById('fastTrackMix').innerHTML='<h4>Fast Track Mix</h4>'+Object.entries(fm).map(([k,v])=>`<div>${k}: ${v}</div>`).join('');}
+function openForm(crNo){if(!can(crNo?'update':'create'))return alert('No permission');editingNo=crNo||null;const d=db();const rec=crNo?d.records.find(x=>x.cr_no===crNo):Object.fromEntries(fields.map(f=>[f,'']));if(!crNo){rec.status='Open';rec.priority='Low';rec.date_raised=today();rec.my_opened=new Date().toLocaleString('en-GB',{month:'short',year:'2-digit'}).replace(' ','-');}
+ document.getElementById('form').classList.remove('hidden');document.getElementById('formTitle').textContent=(crNo?'Edit':'Create')+' Change Record '+(crNo?('#'+crNo):`#${d.next}`);document.getElementById('fields').innerHTML=fields.map(f=>`<label>${labels[f]||f}${f.includes('description')||f==='comment'?`<textarea id='f_${f}'>${rec[f]||''}</textarea>`:`<input id='f_${f}' value="${(rec[f]||'').toString().replaceAll('"','&quot;')}">`}</label>`).join('');window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'});
+}
+function saveRecord(){const d=db();const rec=Object.fromEntries(fields.map(f=>[f,document.getElementById('f_'+f).value]));if(!rec.product)return alert('Product required');if(editingNo){const idx=d.records.findIndex(x=>x.cr_no===editingNo);d.records[idx]={...d.records[idx],...rec,modified_by:currentUser.n,modified_at:new Date().toISOString()};flash(`CR ${editingNo} updated`);}else{const cr=d.next++;const row={cr_no:cr,...rec,archived:false,created_by:currentUser.n,modified_by:currentUser.n,created_at:new Date().toISOString(),modified_at:new Date().toISOString()};d.records.push(row);steps.forEach(s=>d.approvals.push({id:crypto.randomUUID(),cr_no:cr,approval_step:s,status:'Pending',approver_name:'',due_date:rec.due_date||'',approved_at:'',escalation_level:0}));flash(`CR ${cr} created with auto-numbering`);}saveDB(d);cancelForm();render();}
+function cancelForm(){document.getElementById('form').classList.add('hidden');editingNo=null;}
+function archiveRec(no){if(!confirm('Archive CR '+no+'?'))return;const d=db();const r=d.records.find(x=>x.cr_no===no);r.archived=true;r.modified_by=currentUser.n;r.modified_at=new Date().toISOString();saveDB(d);flash(`CR ${no} archived`);render();}
+function openApprovals(no){approvalsFor=no;const d=db();const r=d.records.find(x=>x.cr_no===no);const ap=d.approvals.filter(a=>a.cr_no===no);document.getElementById('approvals').classList.remove('hidden');document.getElementById('approvalTitle').textContent=`Approvals for CR ${no} - ${r.product}`;document.getElementById('approvalRows').innerHTML=ap.map(a=>`<tr><td>${a.approval_step}</td><td>${a.status}</td><td>${a.approver_name||'-'}</td><td>${a.due_date||'-'}</td><td>${a.escalation_level}</td><td>${a.status==='Pending'&&can('approve')?`<button onclick="approve('${a.id}','Approved')">Approve</button> <button onclick="approve('${a.id}','Rejected')">Reject</button>`:'-'}</td></tr>`).join('');}
+function approve(id,status){const d=db();const a=d.approvals.find(x=>x.id===id);a.status=status;a.approver_name=currentUser.n;a.approved_at=new Date().toISOString();saveDB(d);openApprovals(approvalsFor);flash(`Approval ${status}`);renderDashboard();}
+function closeApprovals(){document.getElementById('approvals').classList.add('hidden');}
+function today(){return new Date().toISOString().slice(0,10)}
+function escalate(){const d=db();let ch=false;d.approvals.forEach(a=>{if(a.status==='Pending'&&a.due_date&&a.due_date<today()&&a.escalation_level<3){a.escalation_level++;ch=true;}});if(ch)saveDB(d);}
+if(!localStorage.getItem('qp280-db'))saveDB(db());
+</script>
+</body>
+</html>
